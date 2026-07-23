@@ -36,16 +36,6 @@
             flex-direction: column;
             gap: 1.5rem;
         }
-        .env-warning {
-            background: #FEF3C7;
-            border: 1px solid #FCD34D;
-            color: #92400E;
-            padding: 0.75rem 1rem;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            text-align: center;
-            display: none;
-        }
         .mode-switch {
             display: flex;
             gap: 0.5rem;
@@ -154,6 +144,28 @@
             margin-top: 0.3rem;
             color: var(--text-light);
         }
+        .manual-input-area {
+            display: none;
+            text-align: center;
+        }
+        .manual-input-area input {
+            width: 80%;
+            padding: 0.75rem;
+            border: 2px solid #D1D5DB;
+            border-radius: 12px;
+            font-size: 1rem;
+            text-align: center;
+        }
+        .manual-input-area .btn-submit {
+            margin-top: 0.5rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
         .stats {
             display: flex;
             justify-content: space-around;
@@ -164,9 +176,6 @@
 </head>
 <body>
 <div class="container">
-    <div class="env-warning" id="envWarning">
-        ⚠️ 语音识别需要安全环境（localhost 或 HTTPS），当前可能无法使用。请使用 <code>http://localhost</code> 访问。
-    </div>
     <h1 style="text-align:center; font-size:1.5rem;">🎧 口译快速反应训练</h1>
 
     <!-- 模式切换 -->
@@ -187,14 +196,22 @@
     </div>
 
     <!-- 录音区 -->
-    <div style="text-align:center;">
+    <div style="text-align:center;" id="recordSection">
         <button class="btn-record" id="recordBtn">🎤</button>
         <p style="margin-top:0.5rem; color:var(--text-light);" id="recordStatus">点击按钮开始录音</p>
     </div>
 
+    <!-- 手动输入区（保底模式） -->
+    <div class="manual-input-area" id="manualSection">
+        <p style="color:var(--text-light);">因网络或权限问题，语音识别不可用，请手动输入你的翻译：</p>
+        <input type="text" id="manualInput" placeholder="在这里输入翻译..." />
+        <br>
+        <button class="btn-submit" id="submitManualBtn">提交答案</button>
+    </div>
+
     <!-- 你的回答 -->
     <div style="text-align:center;">
-        <p style="color:var(--text-light);">你的回答识别结果：</p>
+        <p style="color:var(--text-light);">你的回答：</p>
         <div id="recognizedText" style="font-size:1.3rem; font-weight:600; min-height:2rem; background:#F3F4F6; border-radius:12px; padding:0.5rem;">
             —
         </div>
@@ -235,13 +252,13 @@
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
     let isRecording = false;
-    let currentMode = 'ja-zh'; // 'ja-zh' 或 'zh-ja'
+    let currentMode = 'ja-zh';
     let currentWord = null;
     let recognizedText = '';
     let stats = { correct: 0, wrong: 0 };
+    let useManualMode = false; // 是否强制手动输入
 
     // DOM元素
-    const envWarning = document.getElementById('envWarning');
     const modeBtns = document.querySelectorAll('.mode-btn');
     const modeLabel = document.getElementById('modeLabel');
     const wordDisplay = document.getElementById('wordDisplay');
@@ -250,6 +267,10 @@
     const showHintBtn = document.getElementById('showHintBtn');
     const recordBtn = document.getElementById('recordBtn');
     const recordStatus = document.getElementById('recordStatus');
+    const recordSection = document.getElementById('recordSection');
+    const manualSection = document.getElementById('manualSection');
+    const manualInput = document.getElementById('manualInput');
+    const submitManualBtn = document.getElementById('submitManualBtn');
     const recognizedDiv = document.getElementById('recognizedText');
     const resultArea = document.getElementById('resultArea');
     const scoreBadge = document.getElementById('scoreBadge');
@@ -259,85 +280,71 @@
     const wrongSpan = document.getElementById('wrongCount');
     const accuracySpan = document.getElementById('accuracy');
 
-    // ================= 环境检测 =================
-    function checkEnvironment() {
-        const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-        if (!isSecure) {
-            envWarning.style.display = 'block';
-        }
-        if (!SpeechRecognition) {
-            envWarning.textContent = '❌ 您的浏览器不支持语音识别，请使用最新版 Chrome 或 Edge。';
-            envWarning.style.display = 'block';
-            envWarning.style.background = '#FEE2E2';
-            envWarning.style.borderColor = '#FCA5A5';
-            envWarning.style.color = '#991B1B';
-        }
+    // ================= 模式切换 =================
+    function switchToManualMode() {
+        useManualMode = true;
+        recordSection.style.display = 'none';
+        manualSection.style.display = 'block';
     }
 
-    // ================= 初始化语音识别 =================
+    function switchToRecordMode() {
+        useManualMode = false;
+        recordSection.style.display = 'block';
+        manualSection.style.display = 'none';
+    }
+
+    // ================= 语音识别（尝试使用） =================
     function initRecognition() {
-        if (!SpeechRecognition) {
-            showError('浏览器不支持语音识别，请使用 Chrome 或 Edge。');
-            return null;
-        }
+        if (!SpeechRecognition) return null;
         const recog = new SpeechRecognition();
         recog.continuous = false;
         recog.interimResults = false;
         recog.maxAlternatives = 1;
-
-        recog.onresult = (event) => {
-            const transcript = event.results[0][0].transcript.trim();
-            recognizedText = transcript;
-            recognizedDiv.textContent = transcript || '(未识别到语音)';
-            evaluateAnswer();
-            stopRecordingUI();
-        };
-
-        recog.onerror = (event) => {
-            console.error('识别错误:', event.error);
-            let errorMsg = '识别出错，请重试';
-            switch(event.error) {
-                case 'not-allowed':
-                    errorMsg = '麦克风权限被拒绝，请在浏览器设置中允许麦克风访问。';
-                    break;
-                case 'no-speech':
-                    errorMsg = '未检测到语音，请大声说出翻译。';
-                    break;
-                case 'audio-capture':
-                    errorMsg = '未找到麦克风设备。';
-                    break;
-                case 'network':
-                    errorMsg = '网络错误，语音识别需要网络连接。';
-                    break;
-                case 'aborted':
-                    errorMsg = '录音被中断。';
-                    break;
-            }
-            recognizedDiv.textContent = errorMsg;
-            stopRecordingUI();
-        };
-
-        recog.onend = () => {
-            // 如果不是手动停止且没有结果，可能出现了意外结束
-            if (isRecording) {
-                stopRecordingUI();
-            }
-        };
         return recog;
     }
 
     function startRecording() {
-        // 先强制停止前一个实例（如果有）
-        if (recognition) {
-            try {
-                recognition.abort();
-            } catch(e) {}
-        }
-        recognition = initRecognition();
-        if (!recognition) return;
+        if (useManualMode) return;
 
-        // 设置识别语言（根据模式决定回答语言）
+        // 如果之前已经手动切换，直接返回
+        if (!SpeechRecognition) {
+            switchToManualMode();
+            return;
+        }
+
+        recognition = initRecognition();
+        if (!recognition) {
+            switchToManualMode();
+            return;
+        }
+
         recognition.lang = currentMode === 'ja-zh' ? 'zh-CN' : 'ja-JP';
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.trim();
+            recognizedText = transcript || '';
+            recognizedDiv.textContent = recognizedText || '(未识别到语音)';
+            evaluateAnswer();
+            stopRecordingUI();
+        };
+
+        recognition.onerror = (event) => {
+            console.error('识别错误:', event.error);
+            // 关键：任何错误都切换到手动输入模式
+            if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                recognizedDiv.textContent = '语音识别暂时不可用，请手动输入翻译。';
+                switchToManualMode();
+            } else {
+                recognizedDiv.textContent = '识别出错，请重试或手动输入。';
+                // 也提供手动入口
+                switchToManualMode();
+            }
+            stopRecordingUI();
+        };
+
+        recognition.onend = () => {
+            stopRecordingUI();
+        };
 
         try {
             recognition.start();
@@ -348,7 +355,7 @@
             resultArea.style.display = 'none';
         } catch (e) {
             console.error('录音启动失败:', e);
-            recognizedDiv.textContent = '录音启动失败，请刷新重试。';
+            switchToManualMode();
             stopRecordingUI();
         }
     }
@@ -359,31 +366,20 @@
         recordStatus.textContent = '点击按钮开始录音';
     }
 
-    function showError(msg) {
-        recognizedDiv.textContent = msg;
-        stopRecordingUI();
-    }
-
     // ================= 发音合成（TTS） =================
     function speak(text, lang) {
         return new Promise((resolve) => {
             if (!window.speechSynthesis) {
-                alert('您的浏览器不支持语音合成');
                 resolve();
                 return;
             }
-            // 取消任何正在播放的语音
             window.speechSynthesis.cancel();
-
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = lang;
-            utterance.rate = 0.9; // 稍慢一点，适合学习
-
-            // 选择最佳语音
+            utterance.rate = 0.9;
             const voices = speechSynthesis.getVoices();
             const preferredVoice = voices.find(v => v.lang.startsWith(lang));
             if (preferredVoice) utterance.voice = preferredVoice;
-
             utterance.onend = resolve;
             utterance.onerror = resolve;
             window.speechSynthesis.speak(utterance);
@@ -392,8 +388,7 @@
 
     // ================= 题目管理 =================
     function pickRandomWord() {
-        const randomIndex = Math.floor(Math.random() * wordList.length);
-        return wordList[randomIndex];
+        return wordList[Math.floor(Math.random() * wordList.length)];
     }
 
     function loadQuestion() {
@@ -402,44 +397,40 @@
         recognizedDiv.textContent = '—';
         resultArea.style.display = 'none';
         stopRecordingUI();
+        manualInput.value = '';
 
         if (currentMode === 'ja-zh') {
             wordDisplay.textContent = currentWord.japanese;
             readingHint.textContent = currentWord.reading;
         } else {
             wordDisplay.textContent = currentWord.chinese;
-            readingHint.textContent = ''; // 中文不需要假名提示
+            readingHint.textContent = '';
         }
+        // 保持当前模式（手动/录音）不变
     }
 
     function playQuestionAudio() {
         if (!currentWord) return;
-
         if (currentMode === 'ja-zh') {
-            // 【修改点】朗读假名而不是日文汉字，确保发音准确
             speak(currentWord.reading, 'ja-JP');
         } else {
-            // 朗读中文
             speak(currentWord.chinese, 'zh-CN');
         }
     }
 
     // ================= 打分逻辑 =================
     function evaluateAnswer() {
-        if (!currentWord || !recognizedText) return;
+        if (!currentWord) return;
+        let userAnswer = recognizedText.trim();
+        if (!userAnswer) return;
 
-        let correctAnswer, userAnswer = recognizedText;
+        let correctAnswer = currentMode === 'ja-zh' ? currentWord.chinese : currentWord.japanese;
+        checkAndShowResult(userAnswer, correctAnswer);
+    }
 
-        if (currentMode === 'ja-zh') {
-            correctAnswer = currentWord.chinese;
-        } else {
-            correctAnswer = currentWord.japanese;
-        }
-
-        // 简单的包含匹配 + 长度近似判断
+    function checkAndShowResult(userAnswer, correctAnswer) {
         const normalizedUser = userAnswer.replace(/\s+/g, '').toLowerCase();
         const normalizedCorrect = correctAnswer.replace(/\s+/g, '').toLowerCase();
-
         let isCorrect = false;
         let isPartial = false;
 
@@ -506,23 +497,34 @@
 
     recordBtn.addEventListener('click', () => {
         if (isRecording) {
-            // 手动停止
-            if (recognition) {
-                recognition.stop();
-            }
+            recognition.stop();
             stopRecordingUI();
         } else {
             startRecording();
         }
     });
 
+    // 手动输入提交
+    submitManualBtn.addEventListener('click', () => {
+        const userAnswer = manualInput.value.trim();
+        if (!userAnswer) return;
+        recognizedText = userAnswer;
+        recognizedDiv.textContent = userAnswer;
+        let correctAnswer = currentMode === 'ja-zh' ? currentWord.chinese : currentWord.japanese;
+        checkAndShowResult(userAnswer, correctAnswer);
+    });
+
     nextBtn.addEventListener('click', loadQuestion);
 
     // ================= 初始化 =================
-    checkEnvironment();
+    // 先尝试录音模式，如果浏览器不支持或之前已知失败，则默认手动
+    if (!SpeechRecognition) {
+        switchToManualMode();
+    } else {
+        switchToRecordMode();
+    }
     loadQuestion();
     updateStatsDisplay();
-    // 预加载语音列表
     if (window.speechSynthesis) {
         speechSynthesis.getVoices();
     }
