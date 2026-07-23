@@ -165,6 +165,17 @@
             border-radius: 12px;
             font-weight: 600;
             cursor: pointer;
+            margin-right: 0.5rem;
+        }
+        .btn-retry {
+            background: #6B7280;
+            color: white;
+            border: none;
+            padding: 0.5rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 0.5rem;
         }
         .stats {
             display: flex;
@@ -178,13 +189,11 @@
 <div class="container">
     <h1 style="text-align:center; font-size:1.5rem;">🎧 口译快速反应训练</h1>
 
-    <!-- 模式切换 -->
     <div class="mode-switch" id="modeSwitch">
         <button class="mode-btn active" data-mode="ja-zh">听日文 → 说中文</button>
         <button class="mode-btn" data-mode="zh-ja">听中文 → 说日文</button>
     </div>
 
-    <!-- 题目卡片 -->
     <div class="question-card">
         <div class="mode-label" id="modeLabel">当前模式：日译汉</div>
         <div class="word-display" id="wordDisplay">人工知能</div>
@@ -195,35 +204,29 @@
         </div>
     </div>
 
-    <!-- 录音区 -->
     <div style="text-align:center;" id="recordSection">
         <button class="btn-record" id="recordBtn">🎤</button>
         <p style="margin-top:0.5rem; color:var(--text-light);" id="recordStatus">点击按钮开始录音</p>
     </div>
 
-    <!-- 手动输入区（保底模式） -->
     <div class="manual-input-area" id="manualSection">
-        <p style="color:var(--text-light);">因网络或权限问题，语音识别不可用，请手动输入你的翻译：</p>
+        <p style="color:var(--text-light);">语音识别暂时不可用，请手动输入翻译，或点击下方按钮重试录音。</p>
         <input type="text" id="manualInput" placeholder="在这里输入翻译..." />
         <br>
         <button class="btn-submit" id="submitManualBtn">提交答案</button>
+        <button class="btn-retry" id="retryRecordBtn">🎤 重试录音</button>
     </div>
 
-    <!-- 你的回答 -->
     <div style="text-align:center;">
         <p style="color:var(--text-light);">你的回答：</p>
-        <div id="recognizedText" style="font-size:1.3rem; font-weight:600; min-height:2rem; background:#F3F4F6; border-radius:12px; padding:0.5rem;">
-            —
-        </div>
+        <div id="recognizedText" style="font-size:1.3rem; font-weight:600; min-height:2rem; background:#F3F4F6; border-radius:12px; padding:0.5rem;">—</div>
     </div>
 
-    <!-- 结果反馈 -->
     <div class="result-area" id="resultArea" style="display:none;">
         <div class="score-badge" id="scoreBadge">✅ 完全正确</div>
         <div class="feedback-text" id="feedbackText"></div>
     </div>
 
-    <!-- 统计 -->
     <div class="stats">
         <span>✅ 正确：<strong id="correctCount">0</strong></span>
         <span>❌ 错误：<strong id="wrongCount">0</strong></span>
@@ -234,19 +237,27 @@
 </div>
 
 <script>
-    // ================= 词汇表 =================
+    // ================= 词汇表（支持多个同义答案） =================
+    // chinese 和 japanese 现在可以是数组，写多个同义翻译即可
     const wordList = [
-        { japanese: "人工知能", reading: "じんこうちのう", chinese: "人工智能" },
-        { japanese: "黙秘権", reading: "もくひけん", chinese: "沉默权" },
-        { japanese: "国際連合", reading: "こくさいれんごう", chinese: "联合国" },
-        { japanese: "経済成長", reading: "けいざいせいちょう", chinese: "经济增长" },
-        { japanese: "環境保護", reading: "かんきょうほご", chinese: "环境保护" },
-        { japanese: "少子高齢化", reading: "しょうしこうれいか", chinese: "少子老龄化" },
-        { japanese: "円高", reading: "えんだか", chinese: "日元升值" },
-        { japanese: "株価", reading: "かぶか", chinese: "股价" },
-        { japanese: "貿易摩擦", reading: "ぼうえきまさつ", chinese: "贸易摩擦" },
-        { japanese: "平和条約", reading: "へいわじょうやく", chinese: "和平条约" }
+        { japanese: "人工知能", reading: "じんこうちのう", chinese: ["人工智能"] },
+        { japanese: "黙秘権", reading: "もくひけん", chinese: ["沉默权"] },
+        { japanese: "国際連合", reading: "こくさいれんごう", chinese: ["联合国"] },
+        { japanese: "経済成長", reading: "けいざいせいちょう", chinese: ["经济增长", "经济成长"] },
+        { japanese: "環境保護", reading: "かんきょうほご", chinese: ["环境保护"] },
+        { japanese: "少子高齢化", reading: "しょうしこうれいか", chinese: ["少子老龄化", "少子高龄化"] },
+        { japanese: "円高", reading: "えんだか", chinese: ["日元升值", "日元走高"] },
+        { japanese: "株価", reading: "かぶか", chinese: ["股价", "股票价格"] },
+        { japanese: "貿易摩擦", reading: "ぼうえきまさつ", chinese: ["贸易摩擦"] },
+        { japanese: "平和条約", reading: "へいわじょうやく", chinese: ["和平条约"] }
     ];
+
+    // ================= 工具函数：确保答案为数组 =================
+    function ensureArray(value) {
+        if (Array.isArray(value)) return value;
+        if (typeof value === 'string') return [value];
+        return [];
+    }
 
     // ================= 状态管理 =================
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -256,9 +267,7 @@
     let currentWord = null;
     let recognizedText = '';
     let stats = { correct: 0, wrong: 0 };
-    let useManualMode = false; // 是否强制手动输入
 
-    // DOM元素
     const modeBtns = document.querySelectorAll('.mode-btn');
     const modeLabel = document.getElementById('modeLabel');
     const wordDisplay = document.getElementById('wordDisplay');
@@ -271,6 +280,7 @@
     const manualSection = document.getElementById('manualSection');
     const manualInput = document.getElementById('manualInput');
     const submitManualBtn = document.getElementById('submitManualBtn');
+    const retryRecordBtn = document.getElementById('retryRecordBtn');
     const recognizedDiv = document.getElementById('recognizedText');
     const resultArea = document.getElementById('resultArea');
     const scoreBadge = document.getElementById('scoreBadge');
@@ -280,20 +290,16 @@
     const wrongSpan = document.getElementById('wrongCount');
     const accuracySpan = document.getElementById('accuracy');
 
-    // ================= 模式切换 =================
     function switchToManualMode() {
-        useManualMode = true;
         recordSection.style.display = 'none';
         manualSection.style.display = 'block';
     }
 
     function switchToRecordMode() {
-        useManualMode = false;
         recordSection.style.display = 'block';
         manualSection.style.display = 'none';
     }
 
-    // ================= 语音识别（尝试使用） =================
     function initRecognition() {
         if (!SpeechRecognition) return null;
         const recog = new SpeechRecognition();
@@ -304,9 +310,6 @@
     }
 
     function startRecording() {
-        if (useManualMode) return;
-
-        // 如果之前已经手动切换，直接返回
         if (!SpeechRecognition) {
             switchToManualMode();
             return;
@@ -330,13 +333,11 @@
 
         recognition.onerror = (event) => {
             console.error('识别错误:', event.error);
-            // 关键：任何错误都切换到手动输入模式
             if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                recognizedDiv.textContent = '语音识别暂时不可用，请手动输入翻译。';
+                recognizedDiv.textContent = '语音识别连接失败，请尝试手动输入或重试录音。';
                 switchToManualMode();
             } else {
                 recognizedDiv.textContent = '识别出错，请重试或手动输入。';
-                // 也提供手动入口
                 switchToManualMode();
             }
             stopRecordingUI();
@@ -366,7 +367,6 @@
         recordStatus.textContent = '点击按钮开始录音';
     }
 
-    // ================= 发音合成（TTS） =================
     function speak(text, lang) {
         return new Promise((resolve) => {
             if (!window.speechSynthesis) {
@@ -386,7 +386,6 @@
         });
     }
 
-    // ================= 题目管理 =================
     function pickRandomWord() {
         return wordList[Math.floor(Math.random() * wordList.length)];
     }
@@ -406,7 +405,6 @@
             wordDisplay.textContent = currentWord.chinese;
             readingHint.textContent = '';
         }
-        // 保持当前模式（手动/录音）不变
     }
 
     function playQuestionAudio() {
@@ -414,34 +412,50 @@
         if (currentMode === 'ja-zh') {
             speak(currentWord.reading, 'ja-JP');
         } else {
-            speak(currentWord.chinese, 'zh-CN');
+            // 如果是数组，取第一个答案朗读（中文朗读通常取第一个即可）
+            const chineseText = Array.isArray(currentWord.chinese) ? currentWord.chinese[0] : currentWord.chinese;
+            speak(chineseText, 'zh-CN');
         }
     }
 
-    // ================= 打分逻辑 =================
+    // ================= 升级的打分逻辑（支持多答案） =================
     function evaluateAnswer() {
         if (!currentWord) return;
         let userAnswer = recognizedText.trim();
         if (!userAnswer) return;
 
-        let correctAnswer = currentMode === 'ja-zh' ? currentWord.chinese : currentWord.japanese;
-        checkAndShowResult(userAnswer, correctAnswer);
-    }
+        // 获取正确答案列表
+        let correctAnswers;
+        if (currentMode === 'ja-zh') {
+            correctAnswers = ensureArray(currentWord.chinese);
+        } else {
+            // 汉译日时 japanese 也可能是数组（如 [“株価”, “株式価格”]）
+            correctAnswers = ensureArray(currentWord.japanese);
+        }
 
-    function checkAndShowResult(userAnswer, correctAnswer) {
+        // 标准化用户回答
         const normalizedUser = userAnswer.replace(/\s+/g, '').toLowerCase();
-        const normalizedCorrect = correctAnswer.replace(/\s+/g, '').toLowerCase();
         let isCorrect = false;
         let isPartial = false;
 
-        if (normalizedUser === normalizedCorrect) {
-            isCorrect = true;
-        } else if (normalizedUser.includes(normalizedCorrect) || normalizedCorrect.includes(normalizedUser)) {
-            if (Math.abs(normalizedUser.length - normalizedCorrect.length) <= 2) {
-                isPartial = true;
+        // 与每一个正确答案进行匹配
+        for (let answer of correctAnswers) {
+            const normalizedAnswer = answer.replace(/\s+/g, '').toLowerCase();
+            // 完全匹配
+            if (normalizedUser === normalizedAnswer) {
+                isCorrect = true;
+                break;
+            }
+            // 部分匹配（包含关系），但长度别差太多
+            if (normalizedUser.includes(normalizedAnswer) || normalizedAnswer.includes(normalizedUser)) {
+                if (Math.abs(normalizedUser.length - normalizedAnswer.length) <= 2) {
+                    isPartial = true;
+                    break; // 有一个部分匹配就算
+                }
             }
         }
 
+        // 显示反馈
         if (isCorrect) {
             stats.correct++;
             scoreBadge.textContent = '✅ 完全正确';
@@ -449,17 +463,17 @@
             resultArea.classList.remove('wrong');
             feedbackText.textContent = `你的回答：${userAnswer}`;
         } else if (isPartial) {
-            stats.correct++;
+            stats.correct++; // 部分正确也可计入正确，可按需调整
             scoreBadge.textContent = '🟡 部分正确';
             scoreBadge.style.color = 'var(--warning)';
             resultArea.classList.remove('wrong');
-            feedbackText.textContent = `你的回答：${userAnswer} | 标准答案：${correctAnswer}`;
+            feedbackText.textContent = `你的回答：${userAnswer} | 可接受答案：${correctAnswers.join(' / ')}`;
         } else {
             stats.wrong++;
             scoreBadge.textContent = '❌ 错误';
             scoreBadge.style.color = 'var(--danger)';
             resultArea.classList.add('wrong');
-            feedbackText.textContent = `你的回答：${userAnswer} | 标准答案：${correctAnswer}`;
+            feedbackText.textContent = `你的回答：${userAnswer} | 标准答案：${correctAnswers.join(' / ')}`;
         }
 
         resultArea.style.display = 'block';
@@ -474,7 +488,7 @@
         accuracySpan.textContent = rate + '%';
     }
 
-    // ================= 事件绑定 =================
+    // 事件绑定
     modeBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             modeBtns.forEach(b => b.classList.remove('active'));
@@ -489,9 +503,11 @@
     showHintBtn.addEventListener('click', () => {
         if (!currentWord) return;
         if (currentMode === 'ja-zh') {
-            readingHint.textContent = `发音：${currentWord.reading} | 答案首字：${currentWord.chinese.charAt(0)}...`;
+            const chArr = ensureArray(currentWord.chinese);
+            readingHint.textContent = `发音：${currentWord.reading} | 答案首字：${chArr[0].charAt(0)}...`;
         } else {
-            readingHint.textContent = `答案首字：${currentWord.japanese.charAt(0)}... (假名：${currentWord.reading})`;
+            const jpArr = ensureArray(currentWord.japanese);
+            readingHint.textContent = `答案首字：${jpArr[0].charAt(0)}... (假名：${currentWord.reading})`;
         }
     });
 
@@ -504,20 +520,24 @@
         }
     });
 
-    // 手动输入提交
     submitManualBtn.addEventListener('click', () => {
         const userAnswer = manualInput.value.trim();
         if (!userAnswer) return;
         recognizedText = userAnswer;
         recognizedDiv.textContent = userAnswer;
-        let correctAnswer = currentMode === 'ja-zh' ? currentWord.chinese : currentWord.japanese;
-        checkAndShowResult(userAnswer, correctAnswer);
+        evaluateAnswer();
+    });
+
+    retryRecordBtn.addEventListener('click', () => {
+        switchToRecordMode();
+        setTimeout(() => {
+            startRecording();
+        }, 100);
     });
 
     nextBtn.addEventListener('click', loadQuestion);
 
-    // ================= 初始化 =================
-    // 先尝试录音模式，如果浏览器不支持或之前已知失败，则默认手动
+    // 初始化
     if (!SpeechRecognition) {
         switchToManualMode();
     } else {
