@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日语口译快速反应练习</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --bg: #F3F4F6;
+            --card: #FFFFFF;
+            --text: #1F2937;
+            --text-light: #6B7280;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: var(--card);
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .env-warning {
+            background: #FEF3C7;
+            border: 1px solid #FCD34D;
+            color: #92400E;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            text-align: center;
+            display: none;
+        }
+        .mode-switch {
+            display: flex;
+            gap: 0.5rem;
+            background: #E5E7EB;
+            padding: 0.4rem;
+            border-radius: 16px;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 12px;
+            background: transparent;
+            font-weight: 600;
+            color: var(--text-light);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .mode-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 8px rgba(79,70,229,0.3);
+        }
+        .question-card {
+            background: #F9FAFB;
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+        }
+        .mode-label {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-bottom: 0.5rem;
+        }
+        .word-display {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text);
+            margin: 0.5rem 0;
+            letter-spacing: 1px;
+        }
+        .reading-hint {
+            font-size: 1rem;
+            color: var(--text-light);
+            margin-bottom: 1rem;
+            min-height: 1.5rem;
+        }
+        .btn-group {
+            display: flex;
+            gap: 0.8rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-outline { background: white; border: 2px solid #D1D5DB; color: var(--text); }
+        .btn-record {
+            background: var(--danger);
+            color: white;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            box-shadow: 0 4px 12px rgba(239,68,68,0.4);
+            transition: all 0.2s;
+        }
+        .btn-record.recording {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
+            70% { box-shadow: 0 0 0 20px rgba(239,68,68,0); }
+            100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+        }
+        .result-area {
+            background: #F0FDF4;
+            border-radius: 16px;
+            padding: 1.2rem;
+            text-align: center;
+            border: 1px solid #BBF7D0;
+        }
+        .result-area.wrong {
+            background: #FEF2F2;
+            border-color: #FECACA;
+        }
+        .score-badge {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+        .feedback-text {
+            margin-top: 0.3rem;
+            color: var(--text-light);
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            font-size: 0.9rem;
+            color: var(--text-light);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="env-warning" id="envWarning">
+        ⚠️ 语音识别需要安全环境（localhost 或 HTTPS），当前可能无法使用。请使用 <code>http://localhost</code> 访问。
+    </div>
+    <h1 style="text-align:center; font-size:1.5rem;">🎧 口译快速反应训练</h1>
+
+    <!-- 模式切换 -->
+    <div class="mode-switch" id="modeSwitch">
+        <button class="mode-btn active" data-mode="ja-zh">听日文 → 说中文</button>
+        <button class="mode-btn" data-mode="zh-ja">听中文 → 说日文</button>
+    </div>
+
+    <!-- 题目卡片 -->
+    <div class="question-card">
+        <div class="mode-label" id="modeLabel">当前模式：日译汉</div>
+        <div class="word-display" id="wordDisplay">人工知能</div>
+        <div class="reading-hint" id="readingHint">じんこうちのう</div>
+        <div class="btn-group">
+            <button class="btn btn-outline" id="playBtn">▶ 播放题目</button>
+            <button class="btn btn-outline" id="showHintBtn">🔍 显示提示</button>
+        </div>
+    </div>
+
+    <!-- 录音区 -->
+    <div style="text-align:center;">
+        <button class="btn-record" id="recordBtn">🎤</button>
+        <p style="margin-top:0.5rem; color:var(--text-light);" id="recordStatus">点击按钮开始录音</p>
+    </div>
+
+    <!-- 你的回答 -->
+    <div style="text-align:center;">
+        <p style="color:var(--text-light);">你的回答识别结果：</p>
+        <div id="recognizedText" style="font-size:1.3rem; font-weight:600; min-height:2rem; background:#F3F4F6; border-radius:12px; padding:0.5rem;">
+            —
+        </div>
+    </div>
+
+    <!-- 结果反馈 -->
+    <div class="result-area" id="resultArea" style="display:none;">
+        <div class="score-badge" id="scoreBadge">✅ 完全正确</div>
+        <div class="feedback-text" id="feedbackText"></div>
+    </div>
+
+    <!-- 统计 -->
+    <div class="stats">
+        <span>✅ 正确：<strong id="correctCount">0</strong></span>
+        <span>❌ 错误：<strong id="wrongCount">0</strong></span>
+        <span>📊 正确率：<strong id="accuracy">0%</strong></span>
+    </div>
+
+    <button class="btn btn-primary" id="nextBtn" style="width:100%;">下一题 ➡️</button>
+</div>
+
+<script>
+    // ================= 词汇表 =================
+    const wordList = [
+        { japanese: "人工知能", reading: "じんこうちのう", chinese: "人工智能" },
+        { japanese: "黙秘権", reading: "もくひけん", chinese: "沉默权" },
+        { japanese: "国際連合", reading: "こくさいれんごう", chinese: "联合国" },
+        { japanese: "経済成長", reading: "けいざいせいちょう", chinese: "经济增长" },
+        { japanese: "環境保護", reading: "かんきょうほご", chinese: "环境保护" },
+        { japanese: "少子高齢化", reading: "しょうしこうれいか", chinese: "少子老龄化" },
+        { japanese: "円高", reading: "えんだか", chinese: "日元升值" },
+        { japanese: "株価", reading: "かぶか", chinese: "股价" },
+        { japanese: "貿易摩擦", reading: "ぼうえきまさつ", chinese: "贸易摩擦" },
+        { japanese: "平和条約", reading: "へいわじょうやく", chinese: "和平条约" }
+    ];
+
+    // ================= 状态管理 =================
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isRecording = false;
+    let currentMode = 'ja-zh'; // 'ja-zh' 或 'zh-ja'
+    let currentWord = null;
+    let recognizedText = '';
+    let stats = { correct: 0, wrong: 0 };
+
+    // DOM元素
+    const envWarning = document.getElementById('envWarning');
+    const modeBtns = document.querySelectorAll('.mode-btn');
+    const modeLabel = document.getElementById('modeLabel');
+    const wordDisplay = document.getElementById('wordDisplay');
+    const readingHint = document.getElementById('readingHint');
+    const playBtn = document.getElementById('playBtn');
+    const showHintBtn = document.getElementById('showHintBtn');
+    const recordBtn = document.getElementById('recordBtn');
+    const recordStatus = document.getElementById('recordStatus');
+    const recognizedDiv = document.getElementById('recognizedText');
+    const resultArea = document.getElementById('resultArea');
+    const scoreBadge = document.getElementById('scoreBadge');
+    const feedbackText = document.getElementById('feedbackText');
+    const nextBtn = document.getElementById('nextBtn');
+    const correctSpan = document.getElementById('correctCount');
+    const wrongSpan = document.getElementById('wrongCount');
+    const accuracySpan = document.getElementById('accuracy');
+
+    // ================= 环境检测 =================
+    function checkEnvironment() {
+        const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if (!isSecure) {
+            envWarning.style.display = 'block';
+        }
+        if (!SpeechRecognition) {
+            envWarning.textContent = '❌ 您的浏览器不支持语音识别，请使用最新版 Chrome 或 Edge。';
+            envWarning.style.display = 'block';
+            envWarning.style.background = '#FEE2E2';
+            envWarning.style.borderColor = '#FCA5A5';
+            envWarning.style.color = '#991B1B';
+        }
+    }
+
+    // ================= 初始化语音识别 =================
+    function initRecognition() {
+        if (!SpeechRecognition) {
+            showError('浏览器不支持语音识别，请使用 Chrome 或 Edge。');
+            return null;
+        }
+        const recog = new SpeechRecognition();
+        recog.continuous = false;
+        recog.interimResults = false;
+        recog.maxAlternatives = 1;
+
+        recog.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.trim();
+            recognizedText = transcript;
+            recognizedDiv.textContent = transcript || '(未识别到语音)';
+            evaluateAnswer();
+            stopRecordingUI();
+        };
+
+        recog.onerror = (event) => {
+            console.error('识别错误:', event.error);
+            let errorMsg = '识别出错，请重试';
+            switch(event.error) {
+                case 'not-allowed':
+                    errorMsg = '麦克风权限被拒绝，请在浏览器设置中允许麦克风访问。';
+                    break;
+                case 'no-speech':
+                    errorMsg = '未检测到语音，请大声说出翻译。';
+                    break;
+                case 'audio-capture':
+                    errorMsg = '未找到麦克风设备。';
+                    break;
+                case 'network':
+                    errorMsg = '网络错误，语音识别需要网络连接。';
+                    break;
+                case 'aborted':
+                    errorMsg = '录音被中断。';
+                    break;
+            }
+            recognizedDiv.textContent = errorMsg;
+            stopRecordingUI();
+        };
+
+        recog.onend = () => {
+            // 如果不是手动停止且没有结果，可能出现了意外结束
+            if (isRecording) {
+                stopRecordingUI();
+            }
+        };
+        return recog;
+    }
+
+    function startRecording() {
+        // 先强制停止前一个实例（如果有）
+        if (recognition) {
+            try {
+                recognition.abort();
+            } catch(e) {}
+        }
+        recognition = initRecognition();
+        if (!recognition) return;
+
+        // 设置识别语言（根据模式决定回答语言）
+        recognition.lang = currentMode === 'ja-zh' ? 'zh-CN' : 'ja-JP';
+
+        try {
+            recognition.start();
+            isRecording = true;
+            recordBtn.classList.add('recording');
+            recordStatus.textContent = '正在聆听...';
+            recognizedDiv.textContent = '识别中...';
+            resultArea.style.display = 'none';
+        } catch (e) {
+            console.error('录音启动失败:', e);
+            recognizedDiv.textContent = '录音启动失败，请刷新重试。';
+            stopRecordingUI();
+        }
+    }
+
+    function stopRecordingUI() {
+        isRecording = false;
+        recordBtn.classList.remove('recording');
+        recordStatus.textContent = '点击按钮开始录音';
+    }
+
+    function showError(msg) {
+        recognizedDiv.textContent = msg;
+        stopRecordingUI();
+    }
+
+    // ================= 发音合成（TTS） =================
+    function speak(text, lang) {
+        return new Promise((resolve) => {
+            if (!window.speechSynthesis) {
+                alert('您的浏览器不支持语音合成');
+                resolve();
+                return;
+            }
+            // 取消任何正在播放的语音
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = lang;
+            utterance.rate = 0.9; // 稍慢一点，适合学习
+
+            // 选择最佳语音
+            const voices = speechSynthesis.getVoices();
+            const preferredVoice = voices.find(v => v.lang.startsWith(lang));
+            if (preferredVoice) utterance.voice = preferredVoice;
+
+            utterance.onend = resolve;
+            utterance.onerror = resolve;
+            window.speechSynthesis.speak(utterance);
+        });
+    }
+
+    // ================= 题目管理 =================
+    function pickRandomWord() {
+        const randomIndex = Math.floor(Math.random() * wordList.length);
+        return wordList[randomIndex];
+    }
+
+    function loadQuestion() {
+        currentWord = pickRandomWord();
+        recognizedText = '';
+        recognizedDiv.textContent = '—';
+        resultArea.style.display = 'none';
+        stopRecordingUI();
+
+        if (currentMode === 'ja-zh') {
+            wordDisplay.textContent = currentWord.japanese;
+            readingHint.textContent = currentWord.reading;
+        } else {
+            wordDisplay.textContent = currentWord.chinese;
+            readingHint.textContent = ''; // 中文不需要假名提示
+        }
+    }
+
+    function playQuestionAudio() {
+        if (!currentWord) return;
+
+        if (currentMode === 'ja-zh') {
+            // 【修改点】朗读假名而不是日文汉字，确保发音准确
+            speak(currentWord.reading, 'ja-JP');
+        } else {
+            // 朗读中文
+            speak(currentWord.chinese, 'zh-CN');
+        }
+    }
+
+    // ================= 打分逻辑 =================
+    function evaluateAnswer() {
+        if (!currentWord || !recognizedText) return;
+
+        let correctAnswer, userAnswer = recognizedText;
+
+        if (currentMode === 'ja-zh') {
+            correctAnswer = currentWord.chinese;
+        } else {
+            correctAnswer = currentWord.japanese;
+        }
+
+        // 简单的包含匹配 + 长度近似判断
+        const normalizedUser = userAnswer.replace(/\s+/g, '').toLowerCase();
+        const normalizedCorrect = correctAnswer.replace(/\s+/g, '').toLowerCase();
+
+        let isCorrect = false;
+        let isPartial = false;
+
+        if (normalizedUser === normalizedCorrect) {
+            isCorrect = true;
+        } else if (normalizedUser.includes(normalizedCorrect) || normalizedCorrect.includes(normalizedUser)) {
+            if (Math.abs(normalizedUser.length - normalizedCorrect.length) <= 2) {
+                isPartial = true;
+            }
+        }
+
+        if (isCorrect) {
+            stats.correct++;
+            scoreBadge.textContent = '✅ 完全正确';
+            scoreBadge.style.color = 'var(--success)';
+            resultArea.classList.remove('wrong');
+            feedbackText.textContent = `你的回答：${userAnswer}`;
+        } else if (isPartial) {
+            stats.correct++;
+            scoreBadge.textContent = '🟡 部分正确';
+            scoreBadge.style.color = 'var(--warning)';
+            resultArea.classList.remove('wrong');
+            feedbackText.textContent = `你的回答：${userAnswer} | 标准答案：${correctAnswer}`;
+        } else {
+            stats.wrong++;
+            scoreBadge.textContent = '❌ 错误';
+            scoreBadge.style.color = 'var(--danger)';
+            resultArea.classList.add('wrong');
+            feedbackText.textContent = `你的回答：${userAnswer} | 标准答案：${correctAnswer}`;
+        }
+
+        resultArea.style.display = 'block';
+        updateStatsDisplay();
+    }
+
+    function updateStatsDisplay() {
+        correctSpan.textContent = stats.correct;
+        wrongSpan.textContent = stats.wrong;
+        const total = stats.correct + stats.wrong;
+        const rate = total === 0 ? 0 : Math.round((stats.correct / total) * 100);
+        accuracySpan.textContent = rate + '%';
+    }
+
+    // ================= 事件绑定 =================
+    modeBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            modeBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentMode = btn.dataset.mode;
+            modeLabel.textContent = currentMode === 'ja-zh' ? '当前模式：日译汉（听日文说中文）' : '当前模式：汉译日（听中文说日文）';
+            loadQuestion();
+        });
+    });
+
+    playBtn.addEventListener('click', playQuestionAudio);
+    showHintBtn.addEventListener('click', () => {
+        if (!currentWord) return;
+        if (currentMode === 'ja-zh') {
+            readingHint.textContent = `发音：${currentWord.reading} | 答案首字：${currentWord.chinese.charAt(0)}...`;
+        } else {
+            readingHint.textContent = `答案首字：${currentWord.japanese.charAt(0)}... (假名：${currentWord.reading})`;
+        }
+    });
+
+    recordBtn.addEventListener('click', () => {
+        if (isRecording) {
+            // 手动停止
+            if (recognition) {
+                recognition.stop();
+            }
+            stopRecordingUI();
+        } else {
+            startRecording();
+        }
+    });
+
+    nextBtn.addEventListener('click', loadQuestion);
+
+    // ================= 初始化 =================
+    checkEnvironment();
+    loadQuestion();
+    updateStatsDisplay();
+    // 预加载语音列表
+    if (window.speechSynthesis) {
+        speechSynthesis.getVoices();
+    }
+</script>
+</body>
+</html>
